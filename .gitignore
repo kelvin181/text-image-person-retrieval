@@ -1,0 +1,36 @@
+# Dataset (too large for git)
+data/CUHK-PEDES/
+data/ICFG-PEDES/
+data/RSTPReid/
+
+# Model checkpoints and feature caches
+logs/
+*.pth
+*.pt
+
+# Retrieval outputs
+results/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
