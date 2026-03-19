@@ -14,14 +14,6 @@ This is built on [IRRA](https://arxiv.org/abs/2303.12501) (CVPR 2023), fine-tune
 
 Both encoders are trained jointly so that images and text descriptions of the same person land close together in vector space.
 
-## Performance (CUHK-PEDES test set, 3,074 images)
-
-| Rank-1 | Rank-5 | Rank-10 | mAP |
-|--------|--------|---------|-----|
-| 72.9% | 89.6% | 93.8% | 66.1% |
-
-Rank-1 means the correct person is the top result; Rank-5 means they appear somewhere in the top 5.
-
 ## Quick start
 
 ### 1. Install dependencies
@@ -100,12 +92,6 @@ python eval_all.py \
   --config     logs/CUHK-PEDES/pretrained/configs.yaml \
   --cache      data/gallery_cache.pt
 ```
-
-Results (34,820 queries, 34,052-image gallery):
-
-| CMC@1 | CMC@5 | CMC@10 | mAP | mINP |
-|-------|-------|--------|-----|------|
-| 74.86% | 92.79% | 96.61% | 59.11% | 36.57% |
 
 ## Credits
 
