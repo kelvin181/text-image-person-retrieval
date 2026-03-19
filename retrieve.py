@@ -37,12 +37,31 @@ from utils.iotools import load_train_configs
 from utils.simple_tokenizer import SimpleTokenizer
 
 
-def encode_gallery(model, gallery_dir, img_size, device, batch_size=256, num_workers=4):
-    """Encode all test-split gallery images into L2-normalized feature vectors."""
+def encode_gallery(model, gallery_dir, img_size, device, batch_size=256, num_workers=4,
+                   use_full_gallery=False):
+    """Encode gallery images into L2-normalized feature vectors.
+
+    Args:
+        use_full_gallery: if True, encode all images across all splits (train+val+test).
+                          if False (default), encode only the test split.
+    """
     dataset = CUHKPEDES(root=gallery_dir)
-    ds = dataset.test
-    img_paths = ds['img_paths']
-    image_pids = ds['image_pids']
+    if use_full_gallery:
+        # Collect unique (pid, path) from all splits
+        imgs_dir = op.join(gallery_dir, 'CUHK-PEDES', 'imgs/')
+        annos = json.load(open(op.join(gallery_dir, 'CUHK-PEDES', 'reid_raw.json')))
+        seen = set()
+        image_pids, img_paths = [], []
+        for a in annos:
+            p = op.join(imgs_dir, a['file_path'])
+            if p not in seen:
+                seen.add(p)
+                image_pids.append(int(a['id']))
+                img_paths.append(p)
+    else:
+        ds = dataset.test
+        img_paths = ds['img_paths']
+        image_pids = ds['image_pids']
 
     transform = build_transforms(img_size=img_size, is_train=False)
     gallery_set = ImageDataset(image_pids, img_paths, transform)
@@ -84,12 +103,25 @@ def retrieve(args):
     cfg = load_train_configs(args.config)
     cfg.training = False
 
-    device = args.device if torch.cuda.is_available() else "cpu"
+    if args.device != "cpu" and torch.cuda.is_available():
+        device = "cuda"
+    elif args.device != "cpu" and torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
 
-    # num_classes needed only to build the model (classifier head shape)
-    from datasets.cuhkpedes import CUHKPEDES as _DS
-    _ds = _DS(root=args.gallery_dir, verbose=False)
-    num_classes = len(_ds.train_id_container)
+    # Detect num_classes from the checkpoint's classifier head shape so that
+    # a pretrained checkpoint (e.g. trained on the original 11 003-person
+    # CUHK-PEDES split) loads cleanly regardless of our local dataset size.
+    _raw = torch.load(args.checkpoint, map_location='cpu')
+    _sd = _raw.get('model', _raw)
+    # strip DDP "module." prefix if present
+    _sd = {k[len('module.'):] if k.startswith('module.') else k: v for k, v in _sd.items()}
+    num_classes = next(
+        (v.shape[0] for k, v in _sd.items() if k == 'classifier.weight'),
+        11003,  # fallback: original CUHK-PEDES
+    )
+    del _raw, _sd
 
     model = build_model(cfg, num_classes=num_classes)
     checkpointer = Checkpointer(model)
@@ -111,7 +143,8 @@ def retrieve(args):
         img_paths = cache['paths']
     else:
         gallery_feats, gallery_pids, img_paths = encode_gallery(
-            model, args.gallery_dir, img_size, device)
+            model, args.gallery_dir, img_size, device,
+            use_full_gallery=getattr(args, 'full_gallery', False))
         if args.save_cache:
             os.makedirs(op.dirname(op.abspath(args.save_cache)), exist_ok=True)
             torch.save({'feats': gallery_feats, 'pids': gallery_pids,
@@ -178,6 +211,8 @@ def parse_args():
                         help="Path to load gallery feature cache (.pt)")
     parser.add_argument("--device", default="cuda",
                         help="Device to run inference on (default: cuda)")
+    parser.add_argument("--full_gallery", action="store_true",
+                        help="Use all images (train+val+test) as gallery instead of test split only")
     return parser.parse_args()
 
 

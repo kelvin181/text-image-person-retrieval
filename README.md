@@ -1,24 +1,28 @@
 # Text-to-Image Person Retrieval
 
-Fine-tuned [IRRA](https://arxiv.org/abs/2303.12501) (Implicit Relation Reasoning and Aligning) on the CUHK-PEDES dataset for text-to-image person retrieval.
+Given a plain-English description of a person, this system searches a gallery of 34,000+ images and returns the most visually similar matches — ranked by confidence.
 
-Given a natural language query such as *"a woman wearing a red jacket and black trousers"*, the system ranks gallery images by similarity and returns the top-5 matches.
+**Example:** *"a woman wearing a red jacket and black trousers"* → top-5 matching images from the gallery.
 
-## Architecture
+This is built on [IRRA](https://arxiv.org/abs/2303.12501) (CVPR 2023), fine-tuned on the [CUHK-PEDES](https://github.com/ShuangLI59/Person-Search-with-Natural-Language-Description) person re-identification dataset.
 
-- **Backbone:** CLIP ViT-B/16 (pre-trained on 400M image-text pairs)
-- **Cross-modal module:** 4-layer multi-head cross-attention transformer
-- **Training losses:** SDM (Similarity Distribution Matching) + MLM (Masked Language Modeling) + ID (identity classification)
-- **Feature dimension:** 512
-- **Image resolution:** 384 × 128 (person re-id standard)
+## How it works
 
-## Expected Performance on CUHK-PEDES Test Set
+1. **Text → vector**: the query is encoded by a transformer into a 512-dimensional embedding
+2. **Images → vectors**: each gallery image is encoded by a Vision Transformer (ViT-B/16) into the same 512-dimensional space
+3. **Ranking**: cosine similarity between the query vector and every image vector; top-k images are returned
 
-| R@1 | R@5 | R@10 | mAP | mINP |
-|-----|-----|------|-----|------|
-| 73.38 | 89.93 | 93.71 | 66.13 | 50.24 |
+Both encoders are trained jointly so that images and text descriptions of the same person land close together in vector space.
 
-## Setup
+## Performance (CUHK-PEDES test set, 3,074 images)
+
+| Rank-1 | Rank-5 | Rank-10 | mAP |
+|--------|--------|---------|-----|
+| 72.9% | 89.6% | 93.8% | 66.1% |
+
+Rank-1 means the correct person is the top result; Rank-5 means they appear somewhere in the top 5.
+
+## Quick start
 
 ### 1. Install dependencies
 
@@ -26,97 +30,91 @@ Given a natural language query such as *"a woman wearing a red jacket and black 
 pip install -r requirements.txt
 ```
 
-### 2. Download CUHK-PEDES
+### 2. Download the pretrained checkpoint
 
-Request access from the [official source](https://github.com/ShuangLI59/Person-Search-with-Natural-Language-Description) and place the files as follows:
+Download `best.pth` and `configs.yaml` from [Google Drive](https://drive.google.com/file/d/1OBhFhpZpltRMZ88K6ceNUv4vZgevsFCW/view?usp=share_link) and place them at:
 
 ```
-data/
-└── CUHK-PEDES/
-    ├── imgs/
-    │   ├── cam_a/
-    │   └── cam_b/
-    └── reid_raw.json
+logs/CUHK-PEDES/pretrained/
+├── best.pth
+└── configs.yaml
 ```
 
-The BPE tokenizer vocabulary is already included at `data/bpe_simple_vocab_16e6.txt.gz`.
+### 3. Prepare the dataset
 
-## Training
+Download CUHK-PEDES images via HuggingFace (requires ~4 GB disk space):
+
+```bash
+python prepare_data.py --data_dir data/
+```
+
+If you already have the images elsewhere, symlink them to avoid re-downloading:
+
+```bash
+python prepare_data.py --data_dir data/ --images-source /path/to/existing/images
+```
+
+### 4. Encode the gallery (one-time, ~30 min on CPU)
+
+```bash
+python encode_gallery.py \
+  --checkpoint logs/CUHK-PEDES/pretrained/best.pth \
+  --config     logs/CUHK-PEDES/pretrained/configs.yaml \
+  --gallery_dir data \
+  --save_cache  data/gallery_cache.pt
+```
+
+This encodes all 34,052 gallery images and saves their vectors to a cache file. You only need to do this once.
+
+### 5. Run a query
+
+```bash
+python retrieve.py \
+  --query      "a woman in a red jacket and black trousers" \
+  --checkpoint logs/CUHK-PEDES/pretrained/best.pth \
+  --config     logs/CUHK-PEDES/pretrained/configs.yaml \
+  --load_cache data/gallery_cache.pt \
+  --top_k 5 \
+  --output_dir results/
+```
+
+This prints a ranked results table and copies the top-5 images to `results/`.
+
+### Run multiple queries at once
+
+```bash
+python batch_query.py \
+  --checkpoint logs/CUHK-PEDES/pretrained/best.pth \
+  --config     logs/CUHK-PEDES/pretrained/configs.yaml \
+  --cache      data/gallery_cache.pt \
+  --n_queries  100
+```
+
+### Save a visual grid
+
+```bash
+python demo.py \
+  --query      "a man in a blue shirt and dark jeans" \
+  --checkpoint logs/CUHK-PEDES/pretrained/best.pth \
+  --config     logs/CUHK-PEDES/pretrained/configs.yaml \
+  --load_cache data/gallery_cache.pt \
+  --output     results/demo.png
+```
+
+## Training from scratch
+
+Requires a CUDA GPU (trained on RTX 3090). Runs for 60 epochs (~8 hours):
 
 ```bash
 bash run_train.sh
 ```
 
-This runs 60 epochs on a single GPU with the SDM+MLM+ID loss combination. Checkpoints and logs are saved to `logs/CUHK-PEDES/<timestamp>_irra/`.
-
-Monitor training with TensorBoard:
-
-```bash
-tensorboard --logdir logs/
-```
-
-Key hyperparameters (see `utils/options.py` for all defaults):
-
-| Parameter | Value |
-|-----------|-------|
-| Backbone | ViT-B/16 |
-| Batch size | 64 |
-| Learning rate | 1e-5 (5× for cross-modal modules) |
-| Epochs | 60 |
-| Warmup epochs | 5 |
-| Image size | 384 × 128 |
-| Text length | 77 tokens |
-
-## Evaluation
-
-Run standard Rank-1/5/10, mAP, mINP evaluation on the CUHK-PEDES test set:
+Checkpoints are saved to `logs/CUHK-PEDES/<timestamp>_irra/`. Evaluate a checkpoint with:
 
 ```bash
 python test.py --config_file logs/CUHK-PEDES/<run_dir>/configs.yaml
 ```
 
-## Retrieval
-
-Return the top-5 gallery images for a text query:
-
-```bash
-python retrieve.py \
-  --query "a woman in a red jacket and black jeans" \
-  --checkpoint logs/CUHK-PEDES/<run_dir>/best.pth \
-  --config    logs/CUHK-PEDES/<run_dir>/configs.yaml \
-  --gallery_dir data \
-  --top_k 5 \
-  --output_dir results/
-```
-
-The top-5 images are saved to `results/` as `rank1_pid*.jpg` ... `rank5_pid*.jpg`, and a table is printed to the console.
-
-**Gallery caching** — encoding ~3,074 gallery images takes ~10–30 seconds on GPU. Cache them for fast repeated queries:
-
-```bash
-# First run: encode and cache
-python retrieve.py --query "..." --save_cache data/gallery_cache.pt ...
-
-# Subsequent runs: load from cache (< 1 second)
-python retrieve.py --query "..." --load_cache data/gallery_cache.pt ...
-```
-
-## Visualization
-
-Save a side-by-side image grid of the top-5 results:
-
-```bash
-python demo.py \
-  --query "a man in blue jeans and a white shirt" \
-  --checkpoint logs/CUHK-PEDES/<run_dir>/best.pth \
-  --config    logs/CUHK-PEDES/<run_dir>/configs.yaml \
-  --gallery_dir data \
-  --output results/demo.png
-```
-
 ## Credits
 
-Based on the IRRA model from:
-
-> Jiang, D., Ye, M. (2023). *Cross-Modal Implicit Relation Reasoning and Aligning for Text-to-Image Person Retrieval*. CVPR 2023.
-> [arXiv:2303.12501](https://arxiv.org/abs/2303.12501)
+> Jiang, D., Ye, M. (2023). *Cross-Modal Implicit Relation Reasoning and Aligning for Text-to-Image Person Retrieval*. CVPR 2023. [arXiv:2303.12501](https://arxiv.org/abs/2303.12501)
