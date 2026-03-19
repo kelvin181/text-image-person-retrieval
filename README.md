@@ -90,30 +90,22 @@ python batch_query.py \
   --n_queries  100
 ```
 
-### Save a visual grid
+### Evaluate all test captions (CMC & mAP)
+
+Encodes all 34,820 test captions and reports CMC@1/5/10, mAP, and mINP against the full gallery (~3 minutes on Apple Silicon):
 
 ```bash
-python demo.py \
-  --query      "a man in a blue shirt and dark jeans" \
+python eval_all.py \
   --checkpoint logs/CUHK-PEDES/pretrained/best.pth \
   --config     logs/CUHK-PEDES/pretrained/configs.yaml \
-  --load_cache data/gallery_cache.pt \
-  --output     results/demo.png
+  --cache      data/gallery_cache.pt
 ```
 
-## Training from scratch
+Results (34,820 queries, 34,052-image gallery):
 
-Requires a CUDA GPU (trained on RTX 3090). Runs for 60 epochs (~8 hours):
-
-```bash
-bash run_train.sh
-```
-
-Checkpoints are saved to `logs/CUHK-PEDES/<timestamp>_irra/`. Evaluate a checkpoint with:
-
-```bash
-python test.py --config_file logs/CUHK-PEDES/<run_dir>/configs.yaml
-```
+| CMC@1 | CMC@5 | CMC@10 | mAP | mINP |
+|-------|-------|--------|-----|------|
+| 74.86% | 92.79% | 96.61% | 59.11% | 36.57% |
 
 ## Credits
 
