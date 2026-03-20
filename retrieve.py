@@ -63,7 +63,7 @@ def encode_gallery(model, gallery_dir, img_size, device, batch_size=256, num_wor
         img_paths = ds['img_paths']
         image_pids = ds['image_pids']
 
-    transform = build_transforms(img_size=img_size, is_train=False)
+    transform = build_transforms(img_size=img_size)
     gallery_set = ImageDataset(image_pids, img_paths, transform)
     loader = DataLoader(gallery_set, batch_size=batch_size, shuffle=False,
                         num_workers=num_workers)

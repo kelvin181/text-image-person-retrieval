@@ -11,6 +11,9 @@ logs/
 # Retrieval outputs
 results/
 
+# Run-specific progress files
+*_progress_*.json
+
 # Python
 __pycache__/
 *.pyc
