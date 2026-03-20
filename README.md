@@ -26,8 +26,6 @@ IRRA fine-tunes the CLIP backbone on CUHK-PEDES with three targeted improvements
 
 - **MLM + ID losses** — two additional objectives force more discriminative embeddings. Masked Language Modelling masks words in a caption (e.g. *"a woman in a [MASK] jacket"*) and requires the model to predict them using the paired image via cross-attention — grounding words like colours and patterns in specific visual regions. The Identity loss adds a linear classifier predicting person ID from the embedding, directly supervising the model to separate different identities in vector space.
 
-Together these push Rank-1 from ~44% (zero-shot CLIP) to **73.4%** on the CUHK-PEDES test set.
-
 ## Performance on CUHK-PEDES test split
 
 34,820 captions as queries, 3,074 gallery images, 1,510 identities.
