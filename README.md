@@ -10,11 +10,23 @@ Built on [IRRA](https://arxiv.org/abs/2303.12501) (CVPR 2023), fine-tuned on [CU
 
 Both a text query and a set of gallery images are encoded into the same 512-dimensional vector space. Retrieval is cosine similarity — images whose vectors are closest to the query vector are returned first.
 
-The model is based on CLIP (ViT-B/16) but improves on it in three ways for person re-ID:
+### Starting point: zero-shot CLIP
 
-- **Input resolution** — images are resized to 384×128 (tall, narrow person crops) instead of CLIP's default 224×224 square
-- **SDM loss** — replaces CLIP's InfoNCE with Similarity Distribution Matching, which handles multiple images of the same person in a training batch without treating them as negatives
-- **MLM + ID losses** — masked language modelling (predict masked words using the paired image) and an identity classifier head both push the embeddings to be more discriminative across person identities
+CLIP was trained on 400 million image-text pairs to align images and text in a shared embedding space. Applied zero-shot to CUHK-PEDES (no fine-tuning, just cosine similarity), it achieves roughly **44% Rank-1** — a reasonable starting point, but it wasn't built for person re-ID.
+
+The core limitation is that CLIP was trained on diverse web images at 224×224, with one caption per image, and no concept of person identity. Person re-ID has different requirements: tall narrow crops, multiple images of the same person from different cameras, and descriptions that must distinguish fine-grained appearance details like clothing colour and accessories.
+
+### What IRRA adds
+
+IRRA fine-tunes the CLIP backbone on CUHK-PEDES with three targeted improvements:
+
+- **Input resolution** — images are resized to 384×128 (tall, narrow person crops) instead of CLIP's 224×224 square. The ViT positional embeddings are interpolated to match. This preserves full-body detail across head, torso, and feet.
+
+- **SDM loss** — CLIP's InfoNCE loss treats every non-matching pair in a batch as a negative. In a person re-ID batch, multiple images of the *same person* will appear — InfoNCE incorrectly penalises these. Similarity Distribution Matching replaces hard negatives with a soft label distribution derived from person IDs, so same-person pairs are pulled together proportionally rather than pushed apart.
+
+- **MLM + ID losses** — two additional objectives force more discriminative embeddings. Masked Language Modelling masks words in a caption (e.g. *"a woman in a [MASK] jacket"*) and requires the model to predict them using the paired image via cross-attention — grounding words like colours and patterns in specific visual regions. The Identity loss adds a linear classifier predicting person ID from the embedding, directly supervising the model to separate different identities in vector space.
+
+Together these push Rank-1 from ~44% (zero-shot CLIP) to **73.4%** on the CUHK-PEDES test set.
 
 ## Performance on CUHK-PEDES test split
 
